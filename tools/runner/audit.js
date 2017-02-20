@@ -14,14 +14,10 @@
 
 var page = require('webpage').create(),
     system = require('system'),
-    url;
-
-// disabling so we can get the document root from iframes (http -> https)
-page.settings.webSecurityEnabled = false;
-
+    url, failed = 0;
 if (system.args.length !== 2) {
   console.log('Usage: phantomjs audit.js URL');
-  phantom.exit();
+  phantom.exit(1);
 } else {
   url = system.args[1];
   page.open(url, function (status) {
@@ -31,22 +27,29 @@ if (system.args.length !== 2) {
         ". Status was: " +
         status
         );
-      phantom.exit();
+      phantom.exit(1);
     } else {
-      page.evaluate(function() {
-        // if target website has an AMD loader, we need to make sure
-        // that window.axs is still available
-        if (typeof define !== 'undefined' && define.amd) {
-            define.amd = false;
-        }
-      });
-      page.injectJs('../../dist/js/axs_testing.js');
-      var report = page.evaluate(function() {
+      page.injectJs('../../dist/js/axs_testing.js');      
+        var report = page.evaluate(function() {          
         var results = axs.Audit.run();
-        return axs.Audit.createReport(results);
-      });
-      console.log(report);
-      phantom.exit();
+        var returnVal = {"status":"PASS", "results":results, "report":"", "text":""};        
+        results.forEach(function(r){          
+          if (r.result == axs.constants.AuditResult.FAIL){
+            returnVal.status = "FAIL";          
+            returnVal.text = returnVal.text + "|F|\n";            
+            // return;
+          }          
+        });   
+        returnVal.report =  axs.Audit.createReport(results,  this.url);
+        return returnVal;
+      });            
+      if (report.status == "FAIL"){
+        failed = 1;
+      }      
+      console.log(report.report);      
+      console.log("STATUS: "+report.status);
+      console.log("TEXT: "+report.text);
+      phantom.exit(failed);
     }
   });
 }
